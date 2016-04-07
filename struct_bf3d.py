@@ -110,10 +110,10 @@ class MeshVertexInfluences(Struct):
 class MeshHeader(Struct):
     type = 0
     # 0   -> normal mesh
-	# 1   -> normal mesh - two sided
+    # 1   -> normal mesh - two sided
     # 2   -> normal mesh - camera oriented
     # 128 -> skin
-	# 129 -> skin - two sided
+    # 129 -> skin - two sided
    
     meshName = ""
     materialID = 0

@@ -247,9 +247,10 @@ def getMeshUVCoordsChunkSize(uvCoords):
 def WriteMeshUVCoords(file, uvCoords):
     WriteLong(file, 6) #chunktype
     WriteLong(file, getMeshUVCoordsChunkSize(uvCoords)) #chunksize
-    for uv in uvCoords:
-        WriteFloat(file, uv[0])
-        WriteFloat(file, uv[1])
+    print(uvCoords)
+    #for uv in uvCoords:
+    #    WriteFloat(file, uv[0])
+    #    WriteFloat(file, uv[1])
 		
 #######################################################################################
 # VertexInfluences
@@ -391,9 +392,10 @@ def MainExport(givenfilepath, self, context, EXPORT_MODE = 'M'):
         if not EXPORT_MODE == 'H':
             sknFile = open(givenfilepath, "wb")
 		
-            Model = struct_bf3d.Model()
-            Model.name = modelName
-            Model.hieraName = amtName
+        Model = struct_bf3d.Model()
+        Model.name = modelName
+        Model.hieraName = amtName
+        Model.meshes = []
 		
         for mesh_ob in objList: 
             if mesh_ob.name == "BOUNDINGBOX":
@@ -408,10 +410,11 @@ def MainExport(givenfilepath, self, context, EXPORT_MODE = 'M'):
                 Mesh = struct_bf3d.Mesh()
                 Header = struct_bf3d.MeshHeader()
 		
-                verts = []
-                normals = [] 
-                faces = []
-                vertInfs = []
+                Mesh.verts = []
+                Mesh.normals = [] 
+                Mesh.faces = []
+                Mesh.vertInfs = []
+                Mesh.uvCoords = []
 
                 Header.meshName = mesh_ob.name
                 mesh = mesh_ob.to_mesh(bpy.context.scene, False, 'PREVIEW', calc_tessface = True)
@@ -419,14 +422,13 @@ def MainExport(givenfilepath, self, context, EXPORT_MODE = 'M'):
                 triangulate(mesh)
 		
                 Header.vertCount = len(mesh.vertices)
-                Mesh.vertInfs = []
-                Mesh.uvCoords = []
+      
                 group_lookup = {g.index: g.name for g in mesh_ob.vertex_groups}
                 groups = {name: [] for name in group_lookup.values()}
                 for v in mesh.vertices:
-                    verts.append(v.co.xyz)
-                    normals.append(v.normal)
-                    Mesh.uvCoords.append((0.0, 0.0)) #just to fill the array 
+                    Mesh.verts.append(v.co.xyz)
+                    Mesh.normals.append(v.normal)
+                    Mesh.uvCoords.append(v.normal.xy) #just to fill the array 
 				
 				    #vertex influences
                     vertInf = struct_bf3d.MeshVertexInfluences()
@@ -452,22 +454,17 @@ def MainExport(givenfilepath, self, context, EXPORT_MODE = 'M'):
                     elif len(v.groups) > 2: 
                         context.report({'ERROR'}, "max 2 bone influences per vertex supported!")
                         print("Error: max 2 bone influences per vertex supported!")
-			
-                Mesh.verts = verts
-                Mesh.normals = normals
 
                 for face in mesh.polygons:
-                    faces.append((face.vertices[0], face.vertices[1], face.vertices[2]))
-                Mesh.faces = faces
+                    Mesh.faces.append((face.vertices[0], face.vertices[1], face.vertices[2]))
 			
-                Header.faceCount = len(faces)
+                Header.faceCount = len(Mesh.faces)
 			
 		        #uv coords
                 bm = bmesh.new()
                 bm.from_mesh(mesh)
 
                 uv_layer = bm.loops.layers.uv.verify()
-                #bm.faces.layers.tex.verify()
 			
                 index = 0
                 for f in bm.faces:
@@ -476,6 +473,7 @@ def MainExport(givenfilepath, self, context, EXPORT_MODE = 'M'):
                     Mesh.uvCoords[Mesh.faces[index][2]] = f.loops[2][uv_layer].uv
                     index+=1   
 				
+                #print(Mesh.uvCoords)
 			
                 for mat in mesh.materials:
                     matName = (os.path.splitext(os.path.basename(mat.name))[1])[1:]
