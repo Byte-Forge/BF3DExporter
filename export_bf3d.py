@@ -56,7 +56,6 @@ def WriteLongArray(file, array):
 def WriteFloat(file, num):
     file.write(struct.pack("<f", num))
 	
-
 def WriteUnsignedByte(file, num):
     file.write(struct.pack("<B", num))
 	
@@ -247,10 +246,10 @@ def getMeshUVCoordsChunkSize(uvCoords):
 def WriteMeshUVCoords(file, uvCoords):
     WriteLong(file, 6) #chunktype
     WriteLong(file, getMeshUVCoordsChunkSize(uvCoords)) #chunksize
-    print(uvCoords)
-    #for uv in uvCoords:
-    #    WriteFloat(file, uv[0])
-    #    WriteFloat(file, uv[1])
+	
+    for uv in uvCoords:
+        WriteFloat(file, uv[0])
+        WriteFloat(file, uv[1])
 		
 #######################################################################################
 # VertexInfluences
@@ -314,8 +313,8 @@ def WriteMesh(file, mesh):
     #print("Faces")
     WriteMeshUVCoords(file, mesh.uvCoords)
     #print("uvCoords")
-    if len(mesh.vertInfs) > 0:
-        WriteMeshVertexInfluences(file, mesh.vertInfs) 
+    #if len(mesh.vertInfs) > 0:
+    #    WriteMeshVertexInfluences(file, mesh.vertInfs) 
         #print("Vertex Influences")
 		
 #######################################################################################
@@ -408,73 +407,75 @@ def MainExport(givenfilepath, self, context, EXPORT_MODE = 'M'):
                     Model.bVolume = Box
             else:
                 Mesh = struct_bf3d.Mesh()
-                Header = struct_bf3d.MeshHeader()
-		
+                Mesh.header = struct_bf3d.MeshHeader()
                 Mesh.verts = []
                 Mesh.normals = [] 
                 Mesh.faces = []
-                Mesh.vertInfs = []
                 Mesh.uvCoords = []
+                Mesh.vertInfs = []
 
-                Header.meshName = mesh_ob.name
+                Mesh.header.meshName = mesh_ob.name
                 mesh = mesh_ob.to_mesh(bpy.context.scene, False, 'PREVIEW', calc_tessface = True)
 		
                 triangulate(mesh)
 		
-                Header.vertCount = len(mesh.vertices)
+                Mesh.header.vertCount = len(mesh.vertices)
       
                 group_lookup = {g.index: g.name for g in mesh_ob.vertex_groups}
                 groups = {name: [] for name in group_lookup.values()}
+				
+                for face in mesh.polygons:
+                    Mesh.faces.append((face.vertices[0], face.vertices[1], face.vertices[2]))
+					
+                Mesh.header.faceCount = len(Mesh.faces)
+				
                 for v in mesh.vertices:
                     Mesh.verts.append(v.co.xyz)
                     Mesh.normals.append(v.normal)
-                    Mesh.uvCoords.append(v.normal.xy) #just to fill the array 
+                    Mesh.uvCoords.append((0.0, 0.0)) #just to fill the array 
 				
 				    #vertex influences
-                    vertInf = struct_bf3d.MeshVertexInfluences()
-                    if len(v.groups) > 0:
+                    #vertInf = struct_bf3d.MeshVertexInfluences()
+                    #if len(v.groups) > 0:
 				        #has to be this complicated, otherwise the vertex groups would be corrupted
-                        ids = [index for index, pivot in enumerate(Hierarchy.pivots) if pivot.name == mesh_ob.vertex_groups[v.groups[0].group].name] #return an array of indices (in this case only one value)
-                        if len(ids) > 0:
-                            vertInf.boneIdx = ids[0]
-                        vertInf.boneInf = v.groups[0].weight
-                        Mesh.vertInfs.append(vertInf)
-                    elif len(v.groups) > 1:
+                    #    ids = [index for index, pivot in enumerate(Hierarchy.pivots) if pivot.name == mesh_ob.vertex_groups[v.groups[0].group].name] #return an array of indices (in this case only one value)
+                    #    if len(ids) > 0:
+                    #        vertInf.boneIdx = ids[0]
+                    #    vertInf.boneInf = v.groups[0].weight
+                    #    Mesh.vertInfs.append(vertInf)
+                    #elif len(v.groups) > 1:
                         #has to be this complicated, otherwise the vertex groups would be corrupted
-                        ids = [index for index, pivot in enumerate(Hierarchy.pivots) if pivot.name == mesh_ob.vertex_groups[v.groups[0].group].name] #return an array of indices (in this case only one value)
-                        if len(ids) > 0:
-                            vertInf.boneIdx = ids[0]
-                        vertInf.boneInf = v.groups[0].weight
-                        #has to be this complicated, otherwise the vertex groups would be corrupted
-                        ids = [index for index, pivot in enumerate(Hierarchy.pivots) if pivot.name == mesh_ob.vertex_groups[v.groups[1].group].name] #return an array of indices (in this case only one value)
-                        if len(ids) > 0:
-                            vertInf.boneIdx = ids[0]
-                        vertInf.xtraInf = v.groups[1].weight
-                        Mesh.vertInfs.append(vertInf)
-                    elif len(v.groups) > 2: 
-                        context.report({'ERROR'}, "max 2 bone influences per vertex supported!")
-                        print("Error: max 2 bone influences per vertex supported!")
-
-                for face in mesh.polygons:
-                    Mesh.faces.append((face.vertices[0], face.vertices[1], face.vertices[2]))
+                    #    ids = [index for index, pivot in enumerate(Hierarchy.pivots) if pivot.name == mesh_ob.vertex_groups[v.groups[0].group].name] #return an array of indices (in this case only one value)
+                    #    if len(ids) > 0:
+                    #        vertInf.boneIdx = ids[0]
+                    #    vertInf.boneInf = v.groups[0].weight
+                    #    #has to be this complicated, otherwise the vertex groups would be corrupted
+                    #    ids = [index for index, pivot in enumerate(Hierarchy.pivots) if pivot.name == mesh_ob.vertex_groups[v.groups[1].group].name] #return an array of indices (in this case only one value)
+                    #    if len(ids) > 0:
+                    #        vertInf.boneIdx = ids[0]
+                    #    vertInf.xtraInf = v.groups[1].weight
+                    #    Mesh.vertInfs.append(vertInf)
+                    #elif len(v.groups) > 2: 
+                    #    context.report({'ERROR'}, "max 2 bone influences per vertex supported!")
+                    #    print("Error: max 2 bone influences per vertex supported!")
 			
-                Header.faceCount = len(Mesh.faces)
 			
 		        #uv coords
                 bm = bmesh.new()
                 bm.from_mesh(mesh)
 
-                uv_layer = bm.loops.layers.uv.verify()
-			
+                uv_layer = bm.loops.layers.uv.verify() 
+
                 index = 0
                 for f in bm.faces:
-                    Mesh.uvCoords[Mesh.faces[index][0]] = f.loops[0][uv_layer].uv
-                    Mesh.uvCoords[Mesh.faces[index][1]] = f.loops[1][uv_layer].uv
-                    Mesh.uvCoords[Mesh.faces[index][2]] = f.loops[2][uv_layer].uv
+                    #test if we need this 1- at all meshes
+                    Mesh.uvCoords[Mesh.faces[index][0]] = (f.loops[0][uv_layer].uv[0], 1 - f.loops[0][uv_layer].uv[1])
+                    Mesh.uvCoords[Mesh.faces[index][1]] = (f.loops[1][uv_layer].uv[0], 1 - f.loops[1][uv_layer].uv[1])
+                    Mesh.uvCoords[Mesh.faces[index][2]] = (f.loops[2][uv_layer].uv[0], 1 - f.loops[2][uv_layer].uv[1])
                     index+=1   
-				
-                #print(Mesh.uvCoords)
-			
+					
+                del bm
+					
                 for mat in mesh.materials:
                     matName = (os.path.splitext(os.path.basename(mat.name))[1])[1:]
                     #material = struct_w4d.MeshMaterial()
@@ -492,25 +493,23 @@ def MainExport(givenfilepath, self, context, EXPORT_MODE = 'M'):
                     #        material.textures.append(texture)
                     #Mesh.materials.append(material)
 			
-                if len(mesh_ob.vertex_groups) > 0:					
-                    Header.type = 128 #type skin
+                if len(mesh_ob.vertex_groups) > 0:
+                    Mesh.header.type = 128 #type skin
                 else:
-                    Header.type = 0 #type normal mesh
-                    pivot = struct_bf3d.HierarchyPivot()
-                    pivot.name = mesh_ob.name
-                    pivot.parentID = 0
-                    if not mesh_ob.parent_bone == "":
-                        ids = [index for index, pivot in enumerate(Hierarchy.pivots) if pivot.name == mesh_ob.parent_bone] #return an array of indices (in this case only one value)
-                        pivot.parentID = ids[0]
-                    pivot.isBone = 0
-                    pivot.position = mesh_ob.location
-                    pivot.rotation = mesh_ob.rotation_quaternion
-                    Header.parentPivot = len(Hierarchy.pivots)
-                    Hierarchy.pivots.append(pivot)	
+                    Mesh.header.type = 0 #type normal mesh
+                    #pivot = struct_bf3d.HierarchyPivot()
+                    #pivot.name = mesh_ob.name
+                    #pivot.parentID = 0
+                    #if not mesh_ob.parent_bone == "":
+                    #    ids = [index for index, pivot in enumerate(Hierarchy.pivots) if pivot.name == mesh_ob.parent_bone] #return an array of indices (in this case only one value)
+                    #    pivot.parentID = ids[0]
+                    #pivot.isBone = 0
+                    #pivot.position = mesh_ob.location
+                    #pivot.rotation = mesh_ob.rotation_quaternion
+                    #Mesh.header.parentPivot = len(Hierarchy.pivots)
+                    #Hierarchy.pivots.append(pivot)	
 
-                Mesh.header = Header
-                if not EXPORT_MODE == 'H':
-                    Model.meshes.append(Mesh)
+                Model.meshes.append(Mesh)
 
         if not EXPORT_MODE == 'H':
             WriteModel(sknFile, Model)
