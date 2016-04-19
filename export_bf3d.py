@@ -65,10 +65,10 @@ def WriteVector(file, vec):
     WriteFloat(file, vec[2])
 	
 def WriteQuaternion(file, quat):
-    WriteFloat(file, quat[0])
     WriteFloat(file, quat[1])
     WriteFloat(file, quat[2])
     WriteFloat(file, quat[3])
+    WriteFloat(file, quat[0])
 	
 #######################################################################################
 # Triangulate
@@ -100,7 +100,7 @@ def WriteHierarchyHeader(file, header):
 def getPivotsChunkSize(pivots):
     size = 0
     for pivot in pivots:
-        size += 31 + getStringSize(pivot.name)
+        size += 33 + getStringSize(pivot.name)
     return size
 
 def WritePivots(file, pivots):
@@ -109,10 +109,9 @@ def WritePivots(file, pivots):
 	
     for pivot in pivots:
         WriteString(file, pivot.name)
-        WriteSignedShort(file, pivot.parentID)
         WriteUnsignedByte(file, pivot.isBone)
-        WriteVector(file, pivot.position)
-        WriteQuaternion(file, pivot.rotation)
+        WriteQuaternion(file, pivot.position)
+        WriteQuaternion(file, pivot.rotation) 
 
 def WriteHierarchy(file, hierarchy):
     print("\n### NEW HIERARCHY: ###")
@@ -313,8 +312,8 @@ def WriteMesh(file, mesh):
     #print("Faces")
     WriteMeshUVCoords(file, mesh.uvCoords)
     #print("uvCoords")
-    #if len(mesh.vertInfs) > 0:
-    #    WriteMeshVertexInfluences(file, mesh.vertInfs) 
+    if len(mesh.vertInfs) > 0:
+        WriteMeshVertexInfluences(file, mesh.vertInfs) 
         #print("Vertex Influences")
 		
 #######################################################################################
@@ -348,12 +347,14 @@ def WriteModel(file, model):
 def MainExport(givenfilepath, self, context, EXPORT_MODE = 'M'):
     #print("Run Export")
     Hierarchy = struct_bf3d.Hierarchy()
+    Hierarchy.pivots = []
     amtName = ""
     modelName = ""
 	
     roottransform = struct_bf3d.HierarchyPivot()
     roottransform.name = "ROOTTRANSFORM"
-    roottransform.parentID = -1
+    roottransform.position = Quaternion((0.0, 0.0, 0.0, 0.0))
+    roottransform.position.w = -1.0
     Hierarchy.pivots.append(roottransform)
     
 	#switch to object mode
@@ -369,12 +370,15 @@ def MainExport(givenfilepath, self, context, EXPORT_MODE = 'M'):
         for bone in rig.pose.bones:
             pivot = struct_bf3d.HierarchyPivot()
             pivot.name = bone.name
+            pivot.position = Quaternion((0.0, 0.0, 0.0, 0.0))
             if not bone.parent == None:
                 ids = [index for index, pivot in enumerate(Hierarchy.pivots) if pivot.name == bone.parent.name] #return an array of indices (in this case only one value)
-                pivot.parentID = ids[0]
+                pivot.position.w = ids[0]
             else:
-                pivot.parentID = 0
-            pivot.position = bone.location
+                pivot.position.w = 0.0
+            pivot.position.x = bone.location.x
+            pivot.position.y = bone.location.y
+            pivot.position.z = bone.location.z
             pivot.rotation = bone.rotation_quaternion
             Hierarchy.pivots.append(pivot)
     if len(rigList) > 1:
@@ -388,8 +392,6 @@ def MainExport(givenfilepath, self, context, EXPORT_MODE = 'M'):
     if EXPORT_MODE == 'M' or EXPORT_MODE == 'H':
         modelName = (os.path.splitext(os.path.basename(givenfilepath))[0]).upper()
         print(modelName)
-        if not EXPORT_MODE == 'H':
-            sknFile = open(givenfilepath, "wb")
 		
         Model = struct_bf3d.Model()
         Model.name = modelName
@@ -435,29 +437,29 @@ def MainExport(givenfilepath, self, context, EXPORT_MODE = 'M'):
                     Mesh.uvCoords.append((0.0, 0.0)) #just to fill the array 
 				
 				    #vertex influences
-                    #vertInf = struct_bf3d.MeshVertexInfluences()
-                    #if len(v.groups) > 0:
+                    vertInf = struct_bf3d.MeshVertexInfluences()
+                    if len(v.groups) == 1:
 				        #has to be this complicated, otherwise the vertex groups would be corrupted
-                    #    ids = [index for index, pivot in enumerate(Hierarchy.pivots) if pivot.name == mesh_ob.vertex_groups[v.groups[0].group].name] #return an array of indices (in this case only one value)
-                    #    if len(ids) > 0:
-                    #        vertInf.boneIdx = ids[0]
-                    #    vertInf.boneInf = v.groups[0].weight
-                    #    Mesh.vertInfs.append(vertInf)
-                    #elif len(v.groups) > 1:
+                        ids = [index for index, pivot in enumerate(Hierarchy.pivots) if pivot.name == mesh_ob.vertex_groups[v.groups[0].group].name] #return an array of indices (in this case only one value)
+                        if len(ids) > 0:
+                            vertInf.boneIdx = ids[0]
+                        vertInf.boneInf = v.groups[0].weight
+                        Mesh.vertInfs.append(vertInf)
+                    elif len(v.groups) == 2:
                         #has to be this complicated, otherwise the vertex groups would be corrupted
-                    #    ids = [index for index, pivot in enumerate(Hierarchy.pivots) if pivot.name == mesh_ob.vertex_groups[v.groups[0].group].name] #return an array of indices (in this case only one value)
-                    #    if len(ids) > 0:
-                    #        vertInf.boneIdx = ids[0]
-                    #    vertInf.boneInf = v.groups[0].weight
-                    #    #has to be this complicated, otherwise the vertex groups would be corrupted
-                    #    ids = [index for index, pivot in enumerate(Hierarchy.pivots) if pivot.name == mesh_ob.vertex_groups[v.groups[1].group].name] #return an array of indices (in this case only one value)
-                    #    if len(ids) > 0:
-                    #        vertInf.boneIdx = ids[0]
-                    #    vertInf.xtraInf = v.groups[1].weight
-                    #    Mesh.vertInfs.append(vertInf)
-                    #elif len(v.groups) > 2: 
-                    #    context.report({'ERROR'}, "max 2 bone influences per vertex supported!")
-                    #    print("Error: max 2 bone influences per vertex supported!")
+                        ids = [index for index, pivot in enumerate(Hierarchy.pivots) if pivot.name == mesh_ob.vertex_groups[v.groups[0].group].name] #return an array of indices (in this case only one value)
+                        if len(ids) > 0:
+                            vertInf.boneIdx = ids[0]
+                        vertInf.boneInf = v.groups[0].weight
+                        #has to be this complicated, otherwise the vertex groups would be corrupted
+                        ids = [index for index, pivot in enumerate(Hierarchy.pivots) if pivot.name == mesh_ob.vertex_groups[v.groups[1].group].name] #return an array of indices (in this case only one value)
+                        if len(ids) > 0:
+                            vertInf.xtraIdx = ids[0]
+                        vertInf.xtraInf = v.groups[1].weight
+                        Mesh.vertInfs.append(vertInf)
+                    elif len(v.groups) > 2: 
+                        context.report({'ERROR'}, "max 2 bone influences per vertex supported!")
+                        print("Error: max 2 bone influences per vertex supported!")
 			
 			
 		        #uv coords
@@ -497,35 +499,32 @@ def MainExport(givenfilepath, self, context, EXPORT_MODE = 'M'):
                     Mesh.header.type = 128 #type skin
                 else:
                     Mesh.header.type = 0 #type normal mesh
-                    #pivot = struct_bf3d.HierarchyPivot()
-                    #pivot.name = mesh_ob.name
-                    #pivot.parentID = 0
-                    #if not mesh_ob.parent_bone == "":
-                    #    ids = [index for index, pivot in enumerate(Hierarchy.pivots) if pivot.name == mesh_ob.parent_bone] #return an array of indices (in this case only one value)
-                    #    pivot.parentID = ids[0]
-                    #pivot.isBone = 0
-                    #pivot.position = mesh_ob.location
-                    #pivot.rotation = mesh_ob.rotation_quaternion
-                    #Mesh.header.parentPivot = len(Hierarchy.pivots)
-                    #Hierarchy.pivots.append(pivot)	
+                    pivot = struct_bf3d.HierarchyPivot()
+                    pivot.name = mesh_ob.name
+                    pivot.position = Quaternion((0.0, 0.0, 0.0, 0.0))
+                    pivot.position.w = 0.0
+                    if not mesh_ob.parent_bone == "":
+                        ids = [index for index, pivot in enumerate(Hierarchy.pivots) if pivot.name == mesh_ob.parent_bone] #return an array of indices (in this case only one value)
+                        pivot.position.w = ids[0]
+                    pivot.isBone = 0
+                    pivot.position.x = mesh_ob.location.x
+                    pivot.position.y = mesh_ob.location.y
+                    pivot.position.z = mesh_ob.location.z
+                    pivot.rotation = mesh_ob.rotation_quaternion
+                    Mesh.header.parentPivot = len(Hierarchy.pivots)
+                    Hierarchy.pivots.append(pivot)
 
                 Model.meshes.append(Mesh)
 
-        if not EXPORT_MODE == 'H':
+        if EXPORT_MODE == 'M':
+            sknFile = open(givenfilepath, "wb")
             WriteModel(sknFile, Model)
+            sknFile.close()
 
     Hierarchy.header.pivotCount = len(Hierarchy.pivots)
 
-    sklPath = givenfilepath.replace(".bf3d", "_skl.bf3d")
-    sklName = (os.path.splitext(os.path.basename(sklPath))[0])
-
-    #if EXPORT_MODE == 'H':
-    #    sklFile = open(sklPath.replace(sklName, amtName.lower()), "wb")
-    #    Hierarchy.header.name = amtName
-    #    WriteHierarchy(sklFile, Hierarchy)
-    #    sklFile.close()
-				
-    try:
-        sknFile.close()  
-    except:
-        print("")
+    if EXPORT_MODE == 'H':
+        sklFile = open(givenfilepath.replace(modelName.lower(), amtName.lower()), "wb")
+        Hierarchy.header.name = amtName
+        WriteHierarchy(sklFile, Hierarchy) 
+        sklFile.close()

@@ -37,9 +37,8 @@ class HierarchyHeader(Struct):
 #chunk 258
 class HierarchyPivot(Struct):
     name = ""
-    parentID = -1
     isBone = 1 #default 1
-    position = Vector((0.0, 0.0 ,0.0))
+    position = Quaternion((0.0, 0.0, 0.0, 0.0)) #the w value is the parent pivot
     rotation = Quaternion((1.0, 0.0, 0.0, 0.0))
 
 # chunk 256
@@ -101,6 +100,8 @@ class Box(Struct):
 class MeshVertexInfluences(Struct):
     boneIdx = 0
     boneInf = 0.0
+    xtraIdx = 0
+    xtraInf = 0.0
 	
 #######################################################################################
 # Mesh
