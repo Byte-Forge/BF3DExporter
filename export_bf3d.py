@@ -8,6 +8,7 @@ import os
 import math
 import sys
 import bmesh
+from bpy_extras.io_utils import axis_conversion
 from bpy.props import *
 from mathutils import Vector, Quaternion
 from . import struct_bf3d
@@ -20,7 +21,7 @@ from . import struct_bf3d
 
 # animation export
 
-HEAD = 8 #4(long = chunktype) + 4 (long = chunksize)
+HEAD = 8 #4(int = chunktype) + 4 (int = chunksize)
 
 #######################################################################################
 # Basic Methods
@@ -40,35 +41,35 @@ def WriteRGBA(file, rgba):
     file.write(struct.pack("B", int(rgba.b)))
     file.write(struct.pack("B", int(rgba.a)))
 
-def WriteLong(file, num):
-    file.write(struct.pack("<L", num))
-
-def WriteShort(file, num):
-    file.write(struct.pack("<H", num))
-
-def WriteSignedShort(file, num):
-    file.write(struct.pack("<h", num))
+def WriteInt(file, num):
+    file.write(struct.pack("<i", num))
 	
-def WriteLongArray(file, array):
+def WriteIntArray(file, array):
     for a in array:
         WriteLong(file, a)
 
 def WriteFloat(file, num):
     file.write(struct.pack("<f", num))
-	
+
 def WriteUnsignedByte(file, num):
     file.write(struct.pack("<B", num))
-	
+
 def WriteVector(file, vec):
     WriteFloat(file, vec[0])
     WriteFloat(file, vec[1])
     WriteFloat(file, vec[2])
-	
+
 def WriteQuaternion(file, quat):
+    WriteFloat(file, quat[0])
     WriteFloat(file, quat[1])
     WriteFloat(file, quat[2])
     WriteFloat(file, quat[3])
-    WriteFloat(file, quat[0])
+	
+def WriteMatrix(file, mat):
+    WriteQuaternion(file, mat[0])
+    WriteQuaternion(file, mat[1])
+    WriteQuaternion(file, mat[2])
+    WriteQuaternion(file, mat[3])
 	
 #######################################################################################
 # Triangulate
@@ -90,36 +91,36 @@ def getHierarchyHeaderChunkSize(header):
     return 16 + getStringSize(header.name)
 
 def WriteHierarchyHeader(file, header):
-    WriteLong(file, 257) #chunktype
-    WriteLong(file, getHierarchyHeaderChunkSize(header)) #chunksize
+    WriteInt(file, 257) #chunktype
+    WriteInt(file, getHierarchyHeaderChunkSize(header)) #chunksize
 	
     WriteString(file, header.name)
-    WriteLong(file, header.pivotCount)
+    WriteInt(file, header.pivotCount)
     WriteVector(file, header.centerPos)
 	
 def getPivotsChunkSize(pivots):
     size = 0
     for pivot in pivots:
-        size += 33 + getStringSize(pivot.name)
+        size += 69 + getStringSize(pivot.name)
     return size
 
 def WritePivots(file, pivots):
-    WriteLong(file, 258) #chunktype
-    WriteLong(file, getPivotsChunkSize(pivots)) #chunksize
+    WriteInt(file, 258) #chunktype
+    WriteInt(file, getPivotsChunkSize(pivots)) #chunksize
 	
     for pivot in pivots:
         WriteString(file, pivot.name)
+        WriteInt(file, pivot.parent)
         WriteUnsignedByte(file, pivot.isBone)
-        WriteQuaternion(file, pivot.position)
-        WriteQuaternion(file, pivot.rotation) 
+        WriteMatrix(file, pivot.matrix)
 
 def WriteHierarchy(file, hierarchy):
     print("\n### NEW HIERARCHY: ###")
-    WriteLong(file, 256) #chunktype
+    WriteInt(file, 256) #chunktype
     
     size = HEAD + getHierarchyHeaderChunkSize(hierarchy.header) + HEAD + getPivotsChunkSize(hierarchy.pivots) 
 
-    WriteLong(file, size) #chunksize
+    WriteInt(file, size) #chunksize
 	
     WriteHierarchyHeader(file, hierarchy.header)
     print("Header")
@@ -131,22 +132,22 @@ def WriteHierarchy(file, hierarchy):
 #######################################################################################
 	
 def WriteAnimationHeader(file, size, header):
-    WriteLong(file, 513) #chunktype
-    WriteLong(file, size) #chunksize
+    WriteInt(file, 513) #chunktype
+    WriteInt(file, size) #chunksize
 
     WriteString(file, header.name)
     WriteString(file, header.hieraName)
-    WriteLong(file, header.numFrames)
-    WriteLong(file, header.frameRate)
+    WriteInt(file, header.numFrames)
+    WriteInt(file, header.frameRate)
 
 def WriteTimeCodedAnimationChannel(file, channel):
-    WriteLong(file, 514) #chunktype
+    WriteInt(file, 514) #chunktype
     size = 6 + (len(channel.timeCodedKeys) * channel.vectorLen) * 4
-    WriteLong(file, size) #chunksize
+    WriteInt(file, size) #chunksize
 	
-    WriteShort(file, channel.vectorLen)
-    WriteShort(file, channel.type)
-    WriteShort(file, channel.pivot)
+    WriteInt(file, channel.vectorLen)
+    WriteInt(file, channel.type)
+    WriteInt(file, channel.pivot)
 
     if channel.vectorLen == 1:
         for f in channel.timeCodedKeys:
@@ -157,7 +158,7 @@ def WriteTimeCodedAnimationChannel(file, channel):
 
 def WriteAnimation(file, animation):
     print("\n### NEW ANIMATION: ###")
-    WriteLong(file, 512) #chunktype
+    WriteInt(file, 512) #chunktype
 	
     headerSize = len(header.name) + len(header.hieraName) + 8
     channelsSize = 0
@@ -165,7 +166,7 @@ def WriteAnimation(file, animation):
         channelsSize += HEAD + 6 + (len(channel.timeCodedKeys) * channel.vectorLen) * 4
     size = HEAD + headerSize + channelsSize		
 	
-    WriteLong(file, size) #chunksize
+    WriteInt(file, size) #chunksize
 	
     WriteAnimationHeader(file, headerSize, animation.header)
     print("Header")
@@ -182,8 +183,8 @@ def getBoxChunkSize(box):
 
 def WriteBox(file, box):
     print("\n### NEW BOX: ###")
-    WriteLong(file, 1024) #chunktype
-    WriteLong(file, getBoxChunkSize(box)) #chunksize
+    WriteInt(file, 1024) #chunktype
+    WriteInt(file, getBoxChunkSize(box)) #chunksize
 	
     WriteVector(file, box.center)
     WriteVector(file, box.extend)
@@ -197,8 +198,8 @@ def getMeshVerticesChunkSize(vertices):
     return size
 
 def WriteMeshVerticesArray(file, vertices):
-    WriteLong(file, 3) #chunktype
-    WriteLong(file, getMeshVerticesChunkSize(vertices)) #chunksize
+    WriteInt(file, 3) #chunktype
+    WriteInt(file, getMeshVerticesChunkSize(vertices)) #chunksize
 	
     for vert in vertices:
         WriteVector(file, vert)
@@ -212,8 +213,8 @@ def getMeshNormalsArrayChunkSize(normals):
     return size
 	
 def WriteMeshNormalsArray(file, normals):
-    WriteLong(file, 4) #chunktype
-    WriteLong(file, getMeshNormalsArrayChunkSize(normals)) #chunksize
+    WriteInt(file, 4) #chunktype
+    WriteInt(file, getMeshNormalsArrayChunkSize(normals)) #chunksize
 	
     for norm in normals:
         WriteVector(file, norm)
@@ -227,13 +228,13 @@ def getMeshFaceArrayChunkSize(faces):
     return size
 
 def WriteMeshFaceArray(file, faces):
-    WriteLong(file, 5) #chunktype
-    WriteLong(file, getMeshFaceArrayChunkSize(faces)) #chunksize
+    WriteInt(file, 5) #chunktype
+    WriteInt(file, getMeshFaceArrayChunkSize(faces)) #chunksize
 	
     for face in faces:
-        WriteLong(file, face[0])
-        WriteLong(file, face[1])
-        WriteLong(file, face[2])
+        WriteInt(file, face[0])
+        WriteInt(file, face[1])
+        WriteInt(file, face[2])
 		
 #######################################################################################
 # uvCoords
@@ -243,8 +244,8 @@ def getMeshUVCoordsChunkSize(uvCoords):
     return len(uvCoords) * 8
 
 def WriteMeshUVCoords(file, uvCoords):
-    WriteLong(file, 6) #chunktype
-    WriteLong(file, getMeshUVCoordsChunkSize(uvCoords)) #chunksize
+    WriteInt(file, 6) #chunktype
+    WriteInt(file, getMeshUVCoordsChunkSize(uvCoords)) #chunksize
 	
     for uv in uvCoords:
         WriteFloat(file, uv[0])
@@ -255,35 +256,35 @@ def WriteMeshUVCoords(file, uvCoords):
 #######################################################################################	
 		
 def getMeshVertexInfluencesChunkSize(influences):
-    size = len(influences) * 4
+    size = len(influences) * 8
     return size
 
 def WriteMeshVertexInfluences(file, influences):
-    WriteLong(file, 7) #chunktype
-    WriteLong(file, getMeshVertexInfluencesChunkSize(influences)) #chunksize
+    WriteInt(file, 7) #chunktype
+    WriteInt(file, getMeshVertexInfluencesChunkSize(influences)) #chunksize
 
     for inf in influences:
-        WriteShort(file, inf.boneIdx)
-        WriteShort(file, int(inf.boneInf * 100))
+        WriteInt(file, inf.boneIdx)
+        WriteInt(file, int(inf.boneInf * 100))
 		
 #######################################################################################
 # Mesh
 #######################################################################################	
 
 def getMeshHeaderChunkSize(header):
-    size = 11 + getStringSize(header.meshName)
+    size = 17 + getStringSize(header.meshName)
     return size
 
 def WriteMeshHeader(file, header): 
-    WriteLong(file, 2) #chunktype
-    WriteLong(file, getMeshHeaderChunkSize(header)) #chunksize
+    WriteInt(file, 2) #chunktype
+    WriteInt(file, getMeshHeaderChunkSize(header)) #chunksize
 
     WriteUnsignedByte(file, header.type)
     WriteString(file, header.meshName)
-    WriteShort(file, header.materialID)
-    WriteShort(file, header.parentPivot)
-    WriteLong(file, header.faceCount)
-    WriteLong(file, header.vertCount)
+    WriteInt(file, header.materialID)
+    WriteInt(file, header.parentPivot)
+    WriteInt(file, header.faceCount)
+    WriteInt(file, header.vertCount)
 	
 def getMeshChunkSize(mesh):
     size = HEAD + getMeshHeaderChunkSize(mesh.header)
@@ -297,9 +298,9 @@ def getMeshChunkSize(mesh):
 	
 def WriteMesh(file, mesh):
     print("\n### NEW MESH: ###")
-    WriteLong(file, 1) #chunktype
+    WriteInt(file, 1) #chunktype
 
-    WriteLong(file, getMeshChunkSize(mesh)) #chunksize
+    WriteInt(file, getMeshChunkSize(mesh)) #chunksize
 	
     WriteMeshHeader(file, mesh.header)
     print(mesh.header.meshName)
@@ -330,8 +331,8 @@ def getModelChunkSize(model):
 
 def WriteModel(file, model):
     print("\n### NEW MODEL: ###")
-    WriteLong(file, 0) #chunktype
-    WriteLong(file, getModelChunkSize(model)) #chunksize
+    WriteInt(file, 0) #chunktype
+    WriteInt(file, getModelChunkSize(model)) #chunksize
 
     print(model.hieraName)
     WriteString(file, model.hieraName)
@@ -345,6 +346,7 @@ def WriteModel(file, model):
 #######################################################################################	
 
 def MainExport(givenfilepath, self, context, EXPORT_MODE = 'M'):
+    axis_conversion(from_forward='Y', from_up='Z', to_forward='Z', to_up='Y')
     #print("Run Export")
     Hierarchy = struct_bf3d.Hierarchy()
     Hierarchy.pivots = []
@@ -370,16 +372,15 @@ def MainExport(givenfilepath, self, context, EXPORT_MODE = 'M'):
         for bone in rig.pose.bones:
             pivot = struct_bf3d.HierarchyPivot()
             pivot.name = bone.name
-            pivot.position = Quaternion((0.0, 0.0, 0.0, 0.0))
+            pivot.matrix = bone.matrix_channel.copy()
+            #pivot.position = Quaternion((0.0, 0.0, 0.0, 0.0))
             if not bone.parent == None:
                 ids = [index for index, pivot in enumerate(Hierarchy.pivots) if pivot.name == bone.parent.name] #return an array of indices (in this case only one value)
-                pivot.position.w = ids[0]
-            else:
-                pivot.position.w = 0.0
-            pivot.position.x = bone.location.x
-            pivot.position.y = bone.location.y
-            pivot.position.z = bone.location.z
-            pivot.rotation = bone.rotation_quaternion
+                pivot.parent = ids[0]
+            #pivot.position.x = bone.location.x
+            #pivot.position.y = bone.location.y
+            #pivot.position.z = bone.location.z
+            #pivot.rotation = bone.rotation_quaternion
             Hierarchy.pivots.append(pivot)
     if len(rigList) > 1:
         context.report({'ERROR'}, "only one armature allowed!")
@@ -501,16 +502,17 @@ def MainExport(givenfilepath, self, context, EXPORT_MODE = 'M'):
                     Mesh.header.type = 0 #type normal mesh
                     pivot = struct_bf3d.HierarchyPivot()
                     pivot.name = mesh_ob.name
-                    pivot.position = Quaternion((0.0, 0.0, 0.0, 0.0))
-                    pivot.position.w = 0.0
+                    pivot.isBone = 0
+                    pivot.matrix = mesh_ob.matrix_world
+                    #pivot.position = Quaternion((0.0, 0.0, 0.0, 0.0))
                     if not mesh_ob.parent_bone == "":
                         ids = [index for index, pivot in enumerate(Hierarchy.pivots) if pivot.name == mesh_ob.parent_bone] #return an array of indices (in this case only one value)
-                        pivot.position.w = ids[0]
+                        pivot.parent = ids[0]
                     pivot.isBone = 0
-                    pivot.position.x = mesh_ob.location.x
-                    pivot.position.y = mesh_ob.location.y
-                    pivot.position.z = mesh_ob.location.z
-                    pivot.rotation = mesh_ob.rotation_quaternion
+                    #pivot.position.x = mesh_ob.location.x
+                    #pivot.position.y = mesh_ob.location.y
+                    #pivot.position.z = mesh_ob.location.z
+                    #pivot.rotation = mesh_ob.rotation_quaternion
                     Mesh.header.parentPivot = len(Hierarchy.pivots)
                     Hierarchy.pivots.append(pivot)
 

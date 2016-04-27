@@ -1,7 +1,7 @@
 #Written by Michael Schnabel
 #Last Modification 08.02.2016
 #Structs of the BF3D Format 
-from mathutils import Vector, Quaternion
+from mathutils import Vector, Quaternion, Matrix
 
 class Struct:
     def __init__ (self, *argv, **argd):
@@ -37,9 +37,11 @@ class HierarchyHeader(Struct):
 #chunk 258
 class HierarchyPivot(Struct):
     name = ""
+    parent = 0
     isBone = 1 #default 1
-    position = Quaternion((0.0, 0.0, 0.0, 0.0)) #the w value is the parent pivot
-    rotation = Quaternion((1.0, 0.0, 0.0, 0.0))
+    matrix = Matrix()
+    #position = Quaternion((0.0, 0.0, 0.0, 0.0)) #the w value is the parent pivot
+    #rotation = Quaternion((1.0, 0.0, 0.0, 0.0))
 
 # chunk 256
 class Hierarchy(Struct):
