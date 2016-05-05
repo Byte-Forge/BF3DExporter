@@ -16,8 +16,6 @@ from . import struct_bf3d
 
 #TODO 
 
-# uv coords are corrupted on export
-
 # export the hierarchy to the model file if no skeleton exists
 
 # animation export
@@ -346,18 +344,6 @@ def WriteModel(file, model):
 # Main Export
 #######################################################################################
 
-def matrix_world(bone):
-	basis = bone.matrix_basis
-	parent = bone.parent
-	print("#########")
-	print(bone.name)
-	print("#")
-	while not (parent == None):
-		basis = parent.matrix_basis * basis
-		parent = parent.parent
-	print(basis)
-	return basis
-
 def MainExport(givenfilepath, self, context, EXPORT_MODE = 'M'):
 	#axis_conversion(from_forward='Y', from_up='Z', to_forward='Z', to_up='Y')
 	#print("Run Export")
@@ -387,28 +373,11 @@ def MainExport(givenfilepath, self, context, EXPORT_MODE = 'M'):
 			pivot = struct_bf3d.HierarchyPivot()
 			pivot.name = bone.name
 			pivot.parent = 0
-			
-			#why is this an other matrix than below
-			matrix_world(bone)
-			
 			pivot.matrix = bone.matrix_basis.copy()
 			if not bone.parent == None:
 				ids = [index for index, pivot in enumerate(Hierarchy.pivots) if pivot.name == bone.parent.name] #return an array of indices (in this case only one value)
 				pivot.parent = ids[0]
 			Hierarchy.pivots.append(pivot)
-			
-		print("####################################")
-			
-		for i in range(0, len(Hierarchy.pivots)):
-			pivot = Hierarchy.pivots[i]
-			print("######")
-			print(pivot.name)
-			print("#")
-			# calc other matrix here
-			while (pivot.parent > 0):
-				pivot.matrix = Hierarchy.pivots[pivot.parent].matrix * pivot.matrix
-				pivot = Hierarchy.pivots[pivot.parent]
-			print(pivot.matrix)
 			
 	if len(rigList) > 1:
 		context.report({'ERROR'}, "only one armature allowed!")
@@ -490,7 +459,6 @@ def MainExport(givenfilepath, self, context, EXPORT_MODE = 'M'):
 						context.report({'ERROR'}, "max 2 bone influences per vertex supported!")
 						print("Error: max 2 bone influences per vertex supported!")
 
-
 				#uv coords
 				bm = bmesh.new()
 				bm.from_mesh(mesh)
@@ -504,26 +472,8 @@ def MainExport(givenfilepath, self, context, EXPORT_MODE = 'M'):
 					Mesh.uvCoords[Mesh.faces[index][1]] = (f.loops[1][uv_layer].uv[0], 1 - f.loops[1][uv_layer].uv[1])
 					Mesh.uvCoords[Mesh.faces[index][2]] = (f.loops[2][uv_layer].uv[0], 1 - f.loops[2][uv_layer].uv[1])
 					index+=1   
-
 				del bm
-
-				for mat in mesh.materials:
-					matName = (os.path.splitext(os.path.basename(mat.name))[1])[1:]
-					#material = struct_w4d.MeshMaterial()
-					#material.diffuse = struct_w4d.RGBA(r = mat.diffuse_color.r, g = mat.diffuse_color.g, b = mat.diffuse_color.b, a = 0)
-					#material.diffuse_intensity = mat.diffuse_intensity
-					#material.specular = struct_w4d.RGBA(r = mat.specular_color.r, g = mat.specular_color.g, b = mat.specular_color.b, a = 0)
-					#material.specular_intensity = mat.specular_intensity
-					#material.emit = mat.emit
-					#material.alpha = mat.alpha
-					#material.textures = []
-					#for tex in mat.texture_slots:
-					#	 if not (tex == None):
-					#		 texture = struct_w4d.Texture()
-					#		 texture.name = tex.name
-					#		 material.textures.append(texture)
-					#Mesh.materials.append(material)
-
+				
 				if len(mesh_ob.vertex_groups) > 0:
 					Mesh.header.type = 128 #type skin
 				else:
@@ -532,15 +482,10 @@ def MainExport(givenfilepath, self, context, EXPORT_MODE = 'M'):
 					pivot.name = mesh_ob.name
 					pivot.isBone = 0
 					pivot.matrix = mesh_ob.matrix_world
-					#pivot.position = Quaternion((0.0, 0.0, 0.0, 0.0))
 					if not mesh_ob.parent_bone == "":
 						ids = [index for index, pivot in enumerate(Hierarchy.pivots) if pivot.name == mesh_ob.parent_bone] #return an array of indices (in this case only one value)
 						pivot.parent = ids[0]
 					pivot.isBone = 0
-					#pivot.position.x = mesh_ob.location.x
-					#pivot.position.y = mesh_ob.location.y
-					#pivot.position.z = mesh_ob.location.z
-					#pivot.rotation = mesh_ob.rotation_quaternion
 					Mesh.header.parentPivot = len(Hierarchy.pivots)
 					Hierarchy.pivots.append(pivot)
 
