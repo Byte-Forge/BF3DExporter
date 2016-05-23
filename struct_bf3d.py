@@ -25,6 +25,64 @@ class RGBA(Struct):
 	a = 0
 	
 #######################################################################################
+# Model
+#######################################################################################
+
+#chunk 128
+class Model(Struct):
+	hieraName = "" # is empty
+	meshes = []
+	bVolume = None
+	
+#######################################################################################
+# Mesh
+#######################################################################################	
+
+#chunk 130
+class MeshHeader(Struct):
+	type = 0
+	# 0	  -> normal mesh
+	# 1	  -> normal mesh - two sided
+	# 2	  -> normal mesh - camera oriented
+	# 128 -> skin
+	# 129 -> skin - two sided
+   
+	meshName = ""
+	materialID = 0
+	parentPivot = 0
+	faceCount = 0
+	vertCount = 0
+
+#chunk 129
+class Mesh(Struct):
+	header = MeshHeader()
+	verts = []
+	normals = []
+	faces = []
+	uvCoords = []
+	vertInfs = []
+	
+#######################################################################################
+# VertexInfluences
+#######################################################################################
+
+#chunk 136
+class MeshVertexInfluences(Struct):
+	boneIdx = 0
+	boneInf = 0.0
+	xtraIdx = 0
+	xtraInf = 0.0
+	
+#######################################################################################
+# Box
+#######################################################################################	
+
+#chunk 192
+class Box(Struct): 
+	center = Vector((0.0, 0.0 ,0.0))
+	extend = Vector((0.0, 0.0 ,0.0))
+	
+#######################################################################################
 # Hierarchy
 #######################################################################################
 
@@ -54,79 +112,23 @@ class Hierarchy(Struct):
 class AnimationHeader(Struct):
 	name = ""
 	hieraName = ""
-	numFrames = 0
 	frameRate = 0
+	numFrames = 0
 	
+#chunk 515
 class TimeCodedAnimationKey(Struct):
 	frame = 0
-	value = 0
-	
+	value = 0.0
+
 #chunk 514
 class TimeCodedAnimationChannel(Struct):
-	vectorLen = 0
-	type = 0
 	pivot = 0 
+	extrapolation = 0 #constant, linear or beizier
+	type = 0 # xyz or quvw
 	timeCodedKeys = []
 	
 #chunk 512
 class Animation(Struct):
 	header = AnimationHeader()
-	channels = [] 
+	channels = []
 	
-#######################################################################################
-# Model
-#######################################################################################
-
-#chunk 0
-class Model(Struct):
-	hieraName = "" # is empty
-	meshes = []
-	bVolume = None
-	
-#######################################################################################
-# Box
-#######################################################################################	
-
-#chunk 1024
-class Box(Struct): 
-	center = Vector((0.0, 0.0 ,0.0))
-	extend = Vector((0.0, 0.0 ,0.0))
-	
-#######################################################################################
-# VertexInfluences
-#######################################################################################
-
-#chunk 7
-class MeshVertexInfluences(Struct):
-	boneIdx = 0
-	boneInf = 0.0
-	xtraIdx = 0
-	xtraInf = 0.0
-	
-#######################################################################################
-# Mesh
-#######################################################################################	
-
-#chunk 2
-class MeshHeader(Struct):
-	type = 0
-	# 0	  -> normal mesh
-	# 1	  -> normal mesh - two sided
-	# 2	  -> normal mesh - camera oriented
-	# 128 -> skin
-	# 129 -> skin - two sided
-   
-	meshName = ""
-	materialID = 0
-	parentPivot = 0
-	faceCount = 0
-	vertCount = 0
-
-#chunk 1
-class Mesh(Struct):
-	header = MeshHeader()
-	verts = []
-	normals = []
-	faces = []
-	uvCoords = []
-	vertInfs = []
