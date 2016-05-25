@@ -8,7 +8,6 @@ import os
 import math
 import sys
 import bmesh
-import numpy as np
 from bpy_extras.io_utils import axis_conversion
 from bpy.props import *
 from mathutils import Vector, Quaternion, Matrix
@@ -21,6 +20,9 @@ from . import struct_bf3d
 # animation export
 
 HEAD = 8 #4(int = chunktype) + 4 (int = chunksize)
+
+#matrix for axis conversion from z up to y up
+global_matrix = axis_conversion(from_forward='Y', from_up='Z', to_forward='-Z', to_up='Y').to_4x4()
 
 #######################################################################################
 # Basic Methods
@@ -54,6 +56,7 @@ def WriteUnsignedByte(file, num):
 	file.write(struct.pack("<B", num))
 
 def WriteVector(file, vec):
+	vec = global_matrix * vec
 	WriteFloat(file, vec[0])
 	WriteFloat(file, vec[1])
 	WriteFloat(file, vec[2])
@@ -65,25 +68,11 @@ def WriteQuaternion(file, quat):
 	WriteFloat(file, quat[3])
 	
 def WriteMatrix(file, mat):
-	#mat = TransformMatrix(mat)
+	mat = global_matrix * mat * global_matrix.inverted()
 	WriteQuaternion(file, mat[0])
 	WriteQuaternion(file, mat[1])
 	WriteQuaternion(file, mat[2])
 	WriteQuaternion(file, mat[3])
-	
-#######################################################################################
-# matrix transform
-#######################################################################################	
-
-def TransformMatrix(mat):
-	try:
-		new = mat.inverted()
-	except:
-		new = mat.copy()
-	new[0][3] = mat[0][3]
-	new[1][3] = mat[2][3]
-	new[2][3] = -mat[1][3]
-	return new
 	
 #######################################################################################
 # Triangulate
@@ -367,9 +356,7 @@ def WriteModel(file, model):
 # Main Export
 #######################################################################################
 
-
 def MainExport(givenfilepath, self, context, EXPORT_MODE = 'M'):
-	#axis_conversion(from_forward='Y', from_up='Z', to_forward='Z', to_up='Y')
 	#print("Run Export")
 	fileName = os.path.splitext(os.path.basename(givenfilepath))[0]
 	Hierarchy = struct_bf3d.Hierarchy()
