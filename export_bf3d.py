@@ -22,6 +22,7 @@ from . import struct_bf3d
 HEAD = 8 #4(int = chunktype) + 4 (int = chunksize)
 
 #matrix for axis conversion from z up to y up
+#for animations we have to do this manually !!!
 global_matrix = axis_conversion(from_forward='Y', from_up='Z', to_forward='-Z', to_up='Y').to_4x4()
 
 #######################################################################################
@@ -160,6 +161,7 @@ def getTimeCodedAnimationChannelSize(channel):
 	size += len(channel.timeCodedKeys) * 8
 	return size
 
+	#we need another chunk
 def WriteTimeCodedAnimationChannel(file, channel):
 	WriteInt(file, 514) #chunktype
 	WriteInt(file, getTimeCodedAnimationChannelSize(channel)) #chunksize
@@ -534,15 +536,37 @@ def MainExport(givenfilepath, self, context, EXPORT_MODE = 'M'):
 				elif(fcu.extrapolation == "BEIZIER"):
 					channel.extrapolation = 2
 				channel.type = fcu.array_index 
-				channel.timeCodedKeys = []
 				if (fcu.data_path.endswith("quaternion")):
-					channel.type += 4
+					channel.type += 3
+				channel.timeCodedKeys = []
 				pivotName = fcu.data_path.split('"')[1]
 				channel.pivot = pivotsList.index(pivotName)
+		
 				for keyframe in fcu.keyframe_points:
 					key = struct_bf3d.TimeCodedAnimationKey()
 					key.frame = keyframe.co.x
-					key.value = keyframe.co.y
+					
+					#axis conversion is applied here
+					if channel.type == 0:
+						key.value = Hierarchy.pivots[channel.pivot].matrix[0][3] - keyframe.co.y
+					elif channel.type == 1:
+						#channel.type = 2
+						key.value = Hierarchy.pivots[channel.pivot].matrix[1][3] - keyframe.co.y
+					elif channel.type == 2:
+						#channel.type = 1
+						key.value = Hierarchy.pivots[channel.pivot].matrix[2][3] - keyframe.co.y
+						
+					elif channel.type == 3:
+						key.value = Hierarchy.pivots[channel.pivot].matrix.to_quaternion().w - keyframe.co.y
+					elif channel.type == 4:
+						key.value = Hierarchy.pivots[channel.pivot].matrix.to_quaternion().x - keyframe.co.y
+					elif channel.type == 5:
+						#channel.type = 6
+						key.value = Hierarchy.pivots[channel.pivot].matrix.to_quaternion().y - keyframe.co.y
+					elif channel.type == 6:
+						#channel.type = 5
+						key.value = Hierarchy.pivots[channel.pivot].matrix.to_quaternion().z - keyframe.co.y
+						
 					channel.timeCodedKeys.append(key)
 				Animation.channels.append(channel)
 
