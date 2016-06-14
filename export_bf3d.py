@@ -15,9 +15,9 @@ from . import struct_bf3d
 
 #TODO 
 
-# export the hierarchy to the model file if no skeleton exists
+#compute a minimal bounding sphere
 
-# animation export
+version = 1.0
 
 HEAD = 8 #4(int = chunktype) + 4 (int = chunksize)
 
@@ -88,14 +88,78 @@ def triangulate(mesh):
 	bm.free()
 	
 #######################################################################################
+# Mesh Sphere
+#######################################################################################
+
+def calcModelSphere(model):
+	objList = [object for object in bpy.context.scene.objects if object.type == 'MESH']
+	verts = []
+	for mesh_ob in objList: 
+		if (mesh_ob.name == 'BOUNDINGBOX'):
+			continue
+		for b in mesh_ob.bound_box:
+			verts.append(mesh_ob.matrix_world * Vector(b))
+	
+	# get the point with the biggest distance to x and store it in y
+	x = verts[0]
+	y = verts[1]
+	z = verts[2]
+	
+	dist = ((y.x- x.x)**2 + (y.y - x.y)**2 + (y.z - x.z)**2)**(1/2)
+	for v in verts:
+		curr_dist = ((v.x - x.x)**2 + (v.y - x.y)**2 + (v.z - x.z)**2)**(1/2)
+		if (curr_dist > dist):
+			dist = curr_dist
+			y = v
+					
+	#get the point with the biggest distance to y and store it in z
+	dist = ((z.x - y.x)**2 + (z.y - y.y)**2 + (z.z - y.z)**2)**(1/2)
+	for v in verts:
+		curr_dist = ((v.x - y.x)**2 + (v.y - y.y)**2 + (v.z - y.z)**2)**(1/2)
+		if (curr_dist > dist):
+			dist = curr_dist
+			z = v
+			 
+	# the center of the sphere is between y and z
+	y_z = ((z - y)/2)
+	m = (y + z)/2
+	radius = y_z.length
+
+	
+	#test if any of the vertices is outside the sphere (if so update the sphere)
+	for v in verts:
+		curr_dist = ((v.x - m.x)**2 + (v.y - m.y)**2 + (v.z - m.z)**2)**(1/2)
+		if curr_dist > radius:
+			delta = (curr_dist - radius)/2
+			radius += delta
+			m += (Vector(v - m)).normalized() * delta
+	s = struct_bf3d.Sphere()
+	s.center = m
+	s.extend = radius
+	model.bSphere = s
+	
+	#for testing
+	createSphere(radius, m.x, m.y, m.z)
+	
+#######################################################################################
+# create Sphere (just for testing)
+#######################################################################################
+
+def createSphere(radius, x, y, z):
+	bpy.ops.mesh.primitive_uv_sphere_add(size=radius, location=(x, y, z))
+	objList = [object for object in bpy.context.scene.objects if object.type == 'MESH']
+	for mesh_ob in objList: 
+		mesh_ob.draw_type = 'WIRE'
+	
+#######################################################################################
 # BF3D
 #######################################################################################
 
 def WriteBF3D(file, name):
 	file.write(bytes("BF3D", 'UTF-8'))
 	WriteInt(file, 0) #chunktype
-	WriteInt(file, getStringSize(name)) #chunksize
-	WriteString(file, name)
+	WriteInt(file, 4) #chunksize
+	WriteFloat(file, version)
 	
 #######################################################################################
 # Hierarchy
@@ -144,8 +208,9 @@ def WriteHierarchy(file, hierarchy):
 #######################################################################################
 # Animation
 #######################################################################################
+
 def getAnimationHeaderChunkSize(header):
-	return 16 + getStringSize(header.name) + getStringSize(header.hieraName)
+	return 8 + getStringSize(header.name) + getStringSize(header.hieraName)
 	
 def WriteAnimationHeader(file, header):
 	WriteInt(file, 513) #chunktype
@@ -153,7 +218,7 @@ def WriteAnimationHeader(file, header):
 
 	WriteString(file, header.name)
 	WriteString(file, header.hieraName)
-	WriteInt(file, header.frameRate)
+	WriteFloat(file, header.frameRate)
 	WriteInt(file, header.numFrames)
 	
 def getTimeCodedAnimationChannelSize(channel):
@@ -161,7 +226,6 @@ def getTimeCodedAnimationChannelSize(channel):
 	size += len(channel.timeCodedKeys) * 8
 	return size
 
-	#we need another chunk
 def WriteTimeCodedAnimationChannel(file, channel):
 	WriteInt(file, 514) #chunktype
 	WriteInt(file, getTimeCodedAnimationChannelSize(channel)) #chunksize
@@ -179,13 +243,28 @@ def WriteAnimation(file, animation):
 	WriteInt(file, 512) #chunktype
 	channelsSize = 0
 	for channel in animation.channels:
-		channelsSize += getTimeCodedAnimationChannelSize(channel)
+		channelsSize += HEAD + getTimeCodedAnimationChannelSize(channel)
 	WriteInt(file, HEAD + getAnimationHeaderChunkSize(animation.header) + channelsSize) #chunksize
 	
 	WriteAnimationHeader(file, animation.header)
 	print("Header")
 	for channel in animation.channels:
 		WriteTimeCodedAnimationChannel(file, channel)
+		
+#######################################################################################
+# Sphere
+#######################################################################################
+
+def getSphereChunkSize(sphere):
+	return 16
+
+def WriteSphere(file, sphere):
+	print("\n### NEW SPHERE: ###")
+	WriteInt(file, 193) #chunktype
+	WriteInt(file, getSphereChunkSize(sphere)) #chunksize
+	
+	WriteVector(file, sphere.center)
+	WriteFloat(file, sphere.radius)
 			
 #######################################################################################
 # Box
@@ -336,8 +415,10 @@ def WriteMesh(file, mesh):
 
 def getModelChunkSize(model):
 	size = getStringSize(model.hieraName)
-	if not model.bVolume == None:
-		size += getBoxChunkSize(model.bVolume)
+	if not model.bBox == None:
+		size += getBoxChunkSize(model.bBox)
+	if not model.bSphere == None:
+		size += getSphereChunkSize(model.bSphere)
 	for mesh in model.meshes:
 		size += getMeshChunkSize(mesh)
 	return size
@@ -347,10 +428,13 @@ def WriteModel(file, model):
 	WriteInt(file, 128) #chunktype
 	WriteInt(file, getModelChunkSize(model)) #chunksize
 
+	calcModelSphere(model)
 	print(model.hieraName)
 	WriteString(file, model.hieraName)
-	if not model.bVolume == None:
-		WriteBox(file, model.bVolume)
+	if not model.bBox == None:
+		WriteBox(file, model.bBox)
+	if not model.bSphere == None:
+		WriteSphere(file, model.bSphere)
 	for mesh in model.meshes:
 		WriteMesh(file, mesh)
 		
@@ -405,170 +489,186 @@ def MainExport(givenfilepath, self, context, EXPORT_MODE = 'M'):
 	# Get all the mesh objects in the scene.
 	objList = [object for object in bpy.context.scene.objects if object.type == 'MESH']
  
-	if EXPORT_MODE == 'M' or EXPORT_MODE == 'H':
-		modelName = fileName
-		print(modelName)
- 
-		Model = struct_bf3d.Model()
-		Model.name = modelName
-		Model.hieraName = amtName
-		Model.meshes = []
- 
-		for mesh_ob in objList: 
-			if mesh_ob.name == "BOUNDINGBOX":
-				Box = struct_bf3d.Box()
-				Box.center = mesh_ob.location
-				box_mesh = mesh_ob.to_mesh(bpy.context.scene, False, 'PREVIEW', calc_tessface = True)
-				Box.extend = Vector((box_mesh.vertices[0].co.x * 2, box_mesh.vertices[0].co.y * 2, box_mesh.vertices[0].co.z))
- 
-				if not EXPORT_MODE == 'H':
-					Model.bVolume = Box
+	modelName = fileName
+
+	Model = struct_bf3d.Model()
+	Model.name = modelName
+	Model.hieraName = amtName
+	Model.meshes = []
+
+	for mesh_ob in objList: 
+		if mesh_ob.name == "BOUNDINGBOX":
+			Box = struct_bf3d.Box()
+			Box.center = (mesh_ob.matrix_world * Vector(mesh_ob.bound_box[0]) + mesh_ob.matrix_world * Vector(mesh_ob.bound_box[6])) / 2.0
+			Box.extend = Box.center - mesh_ob.matrix_world * Vector(mesh_ob.bound_box[0])
+			Model.bBox = Box
+		else:
+			Mesh = struct_bf3d.Mesh()
+			Mesh.header = struct_bf3d.MeshHeader()
+			Mesh.verts = []
+			Mesh.normals = [] 
+			Mesh.faces = []
+			Mesh.uvCoords = []
+			Mesh.vertInfs = []
+
+			Mesh.header.meshName = mesh_ob.name
+			mesh = mesh_ob.to_mesh(bpy.context.scene, False, 'PREVIEW', calc_tessface = True)
+
+			triangulate(mesh)
+
+			Mesh.header.vertCount = len(mesh.vertices)
+  
+			group_lookup = {g.index: g.name for g in mesh_ob.vertex_groups}
+			groups = {name: [] for name in group_lookup.values()}
+
+			for face in mesh.polygons:
+				Mesh.faces.append((face.vertices[0], face.vertices[1], face.vertices[2]))
+
+			Mesh.header.faceCount = len(Mesh.faces)
+
+			for v in mesh.vertices:
+				Mesh.verts.append(v.co.xyz)
+				Mesh.normals.append(v.normal)
+				Mesh.uvCoords.append((0.0, 0.0)) #just to fill the array 
+
+				#vertex influences
+				vertInf = struct_bf3d.MeshVertexInfluences()
+				if len(v.groups) == 1:
+					#has to be this complicated, otherwise the vertex groups would be corrupted
+					ids = [index for index, pivot in enumerate(Hierarchy.pivots) if pivot.name == mesh_ob.vertex_groups[v.groups[0].group].name] #return an array of indices (in this case only one value)
+					if len(ids) > 0:
+						vertInf.boneIdx = ids[0]
+					vertInf.boneInf = v.groups[0].weight
+					Mesh.vertInfs.append(vertInf)
+				elif len(v.groups) == 2:
+					#has to be this complicated, otherwise the vertex groups would be corrupted
+					ids = [index for index, pivot in enumerate(Hierarchy.pivots) if pivot.name == mesh_ob.vertex_groups[v.groups[0].group].name] #return an array of indices (in this case only one value)
+					if len(ids) > 0:
+						vertInf.boneIdx = ids[0]
+					vertInf.boneInf = v.groups[0].weight
+					#has to be this complicated, otherwise the vertex groups would be corrupted
+					ids = [index for index, pivot in enumerate(Hierarchy.pivots) if pivot.name == mesh_ob.vertex_groups[v.groups[1].group].name] #return an array of indices (in this case only one value)
+					if len(ids) > 0:
+						vertInf.xtraIdx = ids[0]
+					vertInf.xtraInf = v.groups[1].weight
+					Mesh.vertInfs.append(vertInf)
+				elif len(v.groups) > 2: 
+					context.report({'ERROR'}, "max 2 bone influences per vertex supported!")
+					print("Error: max 2 bone influences per vertex supported!")
+
+			#uv coords
+			bm = bmesh.new()
+			bm.from_mesh(mesh)
+
+			uv_layer = bm.loops.layers.uv.verify() 
+
+			index = 0
+			for f in bm.faces:
+				#test if we need this 1- at all meshes
+				Mesh.uvCoords[Mesh.faces[index][0]] = (f.loops[0][uv_layer].uv[0], 1 - f.loops[0][uv_layer].uv[1])
+				Mesh.uvCoords[Mesh.faces[index][1]] = (f.loops[1][uv_layer].uv[0], 1 - f.loops[1][uv_layer].uv[1])
+				Mesh.uvCoords[Mesh.faces[index][2]] = (f.loops[2][uv_layer].uv[0], 1 - f.loops[2][uv_layer].uv[1])
+				index+=1   
+			del bm
+			
+			if len(mesh_ob.vertex_groups) > 0:
+				Mesh.header.type = 128 #type skin
 			else:
-				Mesh = struct_bf3d.Mesh()
-				Mesh.header = struct_bf3d.MeshHeader()
-				Mesh.verts = []
-				Mesh.normals = [] 
-				Mesh.faces = []
-				Mesh.uvCoords = []
-				Mesh.vertInfs = []
+				Mesh.header.type = 0 #type normal mesh
+				pivot = struct_bf3d.HierarchyPivot()
+				pivot.name = mesh_ob.name
+				pivotsList.append(mesh_ob.name)
+				pivot.isBone = 0
+				pivot.matrix = mesh_ob.matrix_basis
+				if not mesh_ob.parent_bone == "":
+					ids = [index for index, pivot in enumerate(Hierarchy.pivots) if pivot.name == mesh_ob.parent_bone] #return an array of indices (in this case only one value)
+					pivot.parent = ids[0]
+				elif not mesh_ob.parent == None:
+					ids = [index for index, pivot in enumerate(Hierarchy.pivots) if pivot.name == mesh_ob.parent.name] #return an array of indices (in this case only one value)
+					pivot.parent = ids[0]
+				pivot.isBone = 0
+				Mesh.header.parentPivot = len(Hierarchy.pivots)
+				Hierarchy.pivots.append(pivot)
 
-				Mesh.header.meshName = mesh_ob.name
-				mesh = mesh_ob.to_mesh(bpy.context.scene, False, 'PREVIEW', calc_tessface = True)
- 
-				triangulate(mesh)
- 
-				Mesh.header.vertCount = len(mesh.vertices)
-	  
-				group_lookup = {g.index: g.name for g in mesh_ob.vertex_groups}
-				groups = {name: [] for name in group_lookup.values()}
- 
-				for face in mesh.polygons:
-					Mesh.faces.append((face.vertices[0], face.vertices[1], face.vertices[2]))
- 
-				Mesh.header.faceCount = len(Mesh.faces)
- 
-				for v in mesh.vertices:
-					Mesh.verts.append(v.co.xyz)
-					Mesh.normals.append(v.normal)
-					Mesh.uvCoords.append((0.0, 0.0)) #just to fill the array 
- 
-					#vertex influences
-					vertInf = struct_bf3d.MeshVertexInfluences()
-					if len(v.groups) == 1:
-						#has to be this complicated, otherwise the vertex groups would be corrupted
-						ids = [index for index, pivot in enumerate(Hierarchy.pivots) if pivot.name == mesh_ob.vertex_groups[v.groups[0].group].name] #return an array of indices (in this case only one value)
-						if len(ids) > 0:
-							vertInf.boneIdx = ids[0]
-						vertInf.boneInf = v.groups[0].weight
-						Mesh.vertInfs.append(vertInf)
-					elif len(v.groups) == 2:
-						#has to be this complicated, otherwise the vertex groups would be corrupted
-						ids = [index for index, pivot in enumerate(Hierarchy.pivots) if pivot.name == mesh_ob.vertex_groups[v.groups[0].group].name] #return an array of indices (in this case only one value)
-						if len(ids) > 0:
-							vertInf.boneIdx = ids[0]
-						vertInf.boneInf = v.groups[0].weight
-						#has to be this complicated, otherwise the vertex groups would be corrupted
-						ids = [index for index, pivot in enumerate(Hierarchy.pivots) if pivot.name == mesh_ob.vertex_groups[v.groups[1].group].name] #return an array of indices (in this case only one value)
-						if len(ids) > 0:
-							vertInf.xtraIdx = ids[0]
-						vertInf.xtraInf = v.groups[1].weight
-						Mesh.vertInfs.append(vertInf)
-					elif len(v.groups) > 2: 
-						context.report({'ERROR'}, "max 2 bone influences per vertex supported!")
-						print("Error: max 2 bone influences per vertex supported!")
+			Model.meshes.append(Mesh)
 
-				#uv coords
-				bm = bmesh.new()
-				bm.from_mesh(mesh)
-
-				uv_layer = bm.loops.layers.uv.verify() 
-
-				index = 0
-				for f in bm.faces:
-					#test if we need this 1- at all meshes
-					Mesh.uvCoords[Mesh.faces[index][0]] = (f.loops[0][uv_layer].uv[0], 1 - f.loops[0][uv_layer].uv[1])
-					Mesh.uvCoords[Mesh.faces[index][1]] = (f.loops[1][uv_layer].uv[0], 1 - f.loops[1][uv_layer].uv[1])
-					Mesh.uvCoords[Mesh.faces[index][2]] = (f.loops[2][uv_layer].uv[0], 1 - f.loops[2][uv_layer].uv[1])
-					index+=1   
-				del bm
-				
-				if len(mesh_ob.vertex_groups) > 0:
-					Mesh.header.type = 128 #type skin
-				else:
-					Mesh.header.type = 0 #type normal mesh
-					pivot = struct_bf3d.HierarchyPivot()
-					pivot.name = mesh_ob.name
-					pivotsList.append(mesh_ob.name)
-					pivot.isBone = 0
-					pivot.matrix = mesh_ob.matrix_world
-					if not mesh_ob.parent_bone == "":
-						ids = [index for index, pivot in enumerate(Hierarchy.pivots) if pivot.name == mesh_ob.parent_bone] #return an array of indices (in this case only one value)
-						pivot.parent = ids[0]
-					pivot.isBone = 0
-					Mesh.header.parentPivot = len(Hierarchy.pivots)
-					Hierarchy.pivots.append(pivot)
-
-				Model.meshes.append(Mesh)
-
-		if EXPORT_MODE == 'M':
-			sknFile = open(givenfilepath, "wb")
-			WriteBF3D(sknFile, fileName)
-			WriteModel(sknFile, Model)
-			sknFile.close()
+	if EXPORT_MODE == 'M':
+		sknFile = open(givenfilepath, "wb")
+		WriteBF3D(sknFile, fileName)
+		WriteModel(sknFile, Model)
+		sknFile.close()
 
 	Hierarchy.header.pivotCount = len(Hierarchy.pivots)
 	
-	if len(rigList) == 1:
-		Animation.header = struct_bf3d.AnimationHeader()
-		Animation.header.hieraName = amtName
-		Animation.header.frameRate = bpy.data.scenes["Scene"].render.fps
-		Animation.channels = []
-		#error if num actions > 1??
-		for action in bpy.data.actions:
-			rig.animation_data.action = action
-			frame_begin, frame_end = [int(x) for x in action.frame_range]
-			Animation.header.numFrames = frame_end
-				
-			for fcu in action.fcurves:
-				channel = struct_bf3d.TimeCodedAnimationChannel()
-				if(fcu.extrapolation == "CONSTANT"):
-					channel.extrapolation = 1
-				elif(fcu.extrapolation == "BEIZIER"):
-					channel.extrapolation = 2
-				channel.type = fcu.array_index 
-				if (fcu.data_path.endswith("quaternion")):
-					channel.type += 3
-				channel.timeCodedKeys = []
-				pivotName = fcu.data_path.split('"')[1]
-				channel.pivot = pivotsList.index(pivotName)
-		
-				for keyframe in fcu.keyframe_points:
-					key = struct_bf3d.TimeCodedAnimationKey()
-					key.frame = keyframe.co.x
+	if EXPORT_MODE == 'A':
+		if len(rigList) == 1: #could also be 0?
+			Animation.header = struct_bf3d.AnimationHeader()
+			Animation.header.hieraName = amtName
+			Animation.header.frameRate = bpy.data.scenes["Scene"].render.fps
+			Animation.header.numFrames = bpy.data.scenes["Scene"].frame_end - bpy.data.scenes["Scene"].frame_start
+			Animation.channels = []
+			for obj in bpy.data.objects:
+				if obj.animation_data == None:
+					continue
+				action = obj.animation_data.action
+				frame_begin, frame_end = [int(x) for x in action.frame_range]
+
+				for fcu in action.fcurves:
+					channel = struct_bf3d.TimeCodedAnimationChannel()
+					if(fcu.extrapolation == "CONSTANT"):
+						channel.extrapolation = 1
+					elif(fcu.extrapolation == "BEIZIER"):
+						channel.extrapolation = 2
+					channel.type = fcu.array_index 
+
+					if (fcu.data_path.endswith("location")):
+						channel.type += 0
+					elif (fcu.data_path.endswith("rotation_quaternion")):
+						channel.type += 3
+					else:
+						print("ERROR!: that type of data_path is not supported yet!")
+						print(fcu.data_path)
+						continue
+					channel.timeCodedKeys = []
+					try:
+						pivotName = fcu.data_path.split('"')[1]
+					except:
+						pivotName = obj.name
+					channel.pivot = pivotsList.index(pivotName)
 					
 					#axis conversion is applied here
-					if channel.type == 0:
-						key.value = Hierarchy.pivots[channel.pivot].matrix[0][3] - keyframe.co.y
-					elif channel.type == 1:
-						#channel.type = 2
-						key.value = Hierarchy.pivots[channel.pivot].matrix[1][3] - keyframe.co.y
+					if channel.type == 1:
+						channel.type = 2
 					elif channel.type == 2:
-						#channel.type = 1
-						key.value = Hierarchy.pivots[channel.pivot].matrix[2][3] - keyframe.co.y
-						
-					elif channel.type == 3:
-						key.value = Hierarchy.pivots[channel.pivot].matrix.to_quaternion().w - keyframe.co.y
-					elif channel.type == 4:
-						key.value = Hierarchy.pivots[channel.pivot].matrix.to_quaternion().x - keyframe.co.y
+						channel.type = 1
 					elif channel.type == 5:
-						#channel.type = 6
-						key.value = Hierarchy.pivots[channel.pivot].matrix.to_quaternion().y - keyframe.co.y
+						channel.type = 6
 					elif channel.type == 6:
-						#channel.type = 5
-						key.value = Hierarchy.pivots[channel.pivot].matrix.to_quaternion().z - keyframe.co.y
+						channel.type = 5
+
+					for keyframe in fcu.keyframe_points:
+						key = struct_bf3d.TimeCodedAnimationKey()
+						key.frame = keyframe.co.x
+
+						if channel.type == 0:
+							key.value = keyframe.co.y - Hierarchy.pivots[channel.pivot].matrix[0][3]
+						elif channel.type == 1:
+							key.value = keyframe.co.y - Hierarchy.pivots[channel.pivot].matrix[2][3]
+						elif channel.type == 2:
+							key.value = -(keyframe.co.y - Hierarchy.pivots[channel.pivot].matrix[1][3])
 						
-					channel.timeCodedKeys.append(key)
-				Animation.channels.append(channel)
+						elif channel.type == 3:
+							key.value = keyframe.co.y
+						elif channel.type == 4:
+							key.value = -keyframe.co.y
+						elif channel.type == 5:
+							key.value = -keyframe.co.y
+						elif channel.type == 6:
+							key.value = keyframe.co.y
+						else:
+							print("invalid animation channel type")
+						channel.timeCodedKeys.append(key)
+					Animation.channels.append(channel)
 
 	if EXPORT_MODE == 'H':
 		sklFile = open(givenfilepath.replace(fileName, amtName), "wb")

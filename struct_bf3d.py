@@ -32,7 +32,8 @@ class RGBA(Struct):
 class Model(Struct):
 	hieraName = "" # is empty
 	meshes = []
-	bVolume = None
+	bSphere = None
+	bBox = None
 	
 #######################################################################################
 # Mesh
@@ -83,6 +84,15 @@ class Box(Struct):
 	extend = Vector((0.0, 0.0 ,0.0))
 	
 #######################################################################################
+# Sphere
+#######################################################################################	
+
+#chunk 193
+class Sphere(Struct): 
+	center = Vector((0.0, 0.0 ,0.0))
+	radius = 0.0
+	
+#######################################################################################
 # Hierarchy
 #######################################################################################
 
@@ -112,7 +122,7 @@ class Hierarchy(Struct):
 class AnimationHeader(Struct):
 	name = ""
 	hieraName = ""
-	frameRate = 0
+	frameRate = 0.0
 	numFrames = 0
 	
 #chunk 515
